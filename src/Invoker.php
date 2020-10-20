@@ -46,13 +46,12 @@ class Invoker
                 continue;
             }
 
-            if ($reflectionParameter->isArray() && is_callable($data[$parameterName])) {
-                $invoker = new CallableInvoker($data[$parameterName]);
-                $result[] = $invoker->invoke($data);
+            if ($reflectionParameter->isArray() && is_array($data[$parameterName])) {
+                $result[] = $data[$parameterName];
                 continue;
             }
 
-            if ($reflectionParameter->isCallable() && is_array($data[$parameterName])) {
+            if ($reflectionParameter->isCallable() && is_callable($data[$parameterName])) {
                 $result[] = $data[$parameterName];
                 continue;
             }
