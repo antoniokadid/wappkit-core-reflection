@@ -42,6 +42,7 @@ class ClosureInvoker
 
     /**
      * @param array $parameters
+     * @param bool  $keyValuePairs True, if the $parameters is a key-value pair array else False.
      *
      * @return mixed
      *
@@ -49,12 +50,20 @@ class ClosureInvoker
      * @throws Exceptions\UnknownParameterTypeException
      * @throws ReflectionException
      */
-    public function invoke(array $parameters = [])
+    public function invoke(array $parameters = [], bool $keyValuePairs = TRUE)
     {
+        $this->_isDataKeyValuePairs = $keyValuePairs;
+
         $reflectionFunction = new ReflectionFunction($this->_closure);
         if ($reflectionFunction->getNumberOfParameters() === 0)
             return $reflectionFunction->invoke();
 
-        return $reflectionFunction->invokeArgs(self::getInvokeArgs($reflectionFunction->getParameters(), $parameters));
+        $reflectionParameters = $reflectionFunction->getParameters();
+        $parameters = $this->buildParameters($reflectionParameters, $parameters);
+
+        return $reflectionFunction->invokeArgs(
+            $this->getInvokeArgs(
+                $reflectionParameters,
+                $parameters));
     }
 }

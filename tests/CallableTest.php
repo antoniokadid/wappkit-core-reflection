@@ -7,7 +7,6 @@ use AntonioKadid\WAPPKitCore\Reflection\Exceptions\InvalidParameterValueExceptio
 use AntonioKadid\WAPPKitCore\Reflection\Exceptions\UnknownParameterTypeException;
 use PHPUnit\Framework\TestCase;
 use ReflectionException;
-use Webmozart\Assert\Assert;
 
 /**
  * Class CallableTest

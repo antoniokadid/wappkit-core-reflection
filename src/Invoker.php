@@ -15,6 +15,8 @@ use ReflectionParameter;
  */
 class Invoker
 {
+    protected $_isDataKeyValuePairs;
+
     /**
      * @param array $reflectionParameters
      * @param array $data
@@ -25,24 +27,16 @@ class Invoker
      * @throws ReflectionException
      * @throws UnknownParameterTypeException
      */
-    protected static function getInvokeArgs(array $reflectionParameters, array $data): array
+    protected function getInvokeArgs(array $reflectionParameters, array $data): array
     {
         $result = [];
 
+        /** @var ReflectionParameter $reflectionParameter */
         foreach ($reflectionParameters as $reflectionParameter) {
             $parameterName = $reflectionParameter->getName();
 
-            if (!array_key_exists($parameterName, $data)) {
-                if ($reflectionParameter->isOptional() && $reflectionParameter->isDefaultValueAvailable())
-                    $result[] = $reflectionParameter->getDefaultValue();
-                else if ($reflectionParameter->allowsNull())
-                    $result[] = NULL;
-
-                throw new InvalidParameterValueException($parameterName, sprintf('Invalid value for parameter %s.', $parameterName));
-            }
-
-            if (!$reflectionParameter->hasType()) {
-                $result[] = $data[$parameterName];
+            if (($class = $reflectionParameter->getClass()) != NULL) {
+                $result[] = $this->getValueForClassParameter($reflectionParameter, $class->getName(), $data);
                 continue;
             }
 
@@ -56,10 +50,44 @@ class Invoker
                 continue;
             }
 
-            $result[] = self::getValueForTypedParameter($reflectionParameter, $data);
+            if (!array_key_exists($parameterName, $data) ||
+                ($reflectionParameter->isCallable() && !is_callable($data[$parameterName]))) {
+                if ($reflectionParameter->isOptional() && $reflectionParameter->isDefaultValueAvailable())
+                    $result[] = $reflectionParameter->getDefaultValue();
+                else if ($reflectionParameter->allowsNull())
+                    $result[] = NULL;
+
+                throw new InvalidParameterValueException($parameterName, sprintf('Invalid value for parameter %s.', $parameterName));
+            }
+
+            $result[] = !$reflectionParameter->hasType() ?
+                $data[$parameterName] :
+                $this->getValueForTypedParameter($reflectionParameter, $data);
         }
 
         return $result;
+    }
+
+    /**
+     * @param ReflectionParameter[] $reflectionParameters
+     * @param array                 $values
+     *
+     * @return array
+     */
+    protected function buildParameters(array $reflectionParameters, array $values): array
+    {
+        if ($this->_isDataKeyValuePairs)
+            return $values;
+
+        $keys = array_map(
+            function (ReflectionParameter $parameter) {
+                return $parameter->getName();
+            },
+            $reflectionParameters);
+
+        $values = array_pad($values, count($keys), NULL);
+
+        return array_combine($keys, $values);
     }
 
     /**
@@ -72,7 +100,7 @@ class Invoker
      * @throws ReflectionException
      * @throws UnknownParameterTypeException
      */
-    private static function getValueForTypedParameter(ReflectionParameter $parameter, array $data)
+    private function getValueForTypedParameter(ReflectionParameter $parameter, array $data)
     {
         $parameterName = $parameter->getName();
         $parameterType = $parameter->getType();
@@ -102,23 +130,51 @@ class Invoker
             }
             default:
             {
-                if (!class_exists($parameterTypeName))
-                    throw new UnknownParameterTypeException($parameterName, sprintf('Unknown type for parameter %s', $parameterName));
-
-                $injectedClass = $parameter->getClass();
-                if ($injectedClass == NULL || !$injectedClass->isInstantiable()) {
-                    if ($parameter->isOptional() && $parameter->isDefaultValueAvailable())
-                        return $parameter->getDefaultValue();
-
-                    throw new UnknownParameterTypeException($parameterName, sprintf('Unknown type for parameter %s', $parameterName));
-                }
-
-                $injectedConstructor = $injectedClass->getConstructor();
-                if ($injectedConstructor == NULL || $injectedConstructor->getNumberOfParameters() === 0)
-                    return $injectedClass->newInstance([]);
-
-                return $injectedClass->newInstanceArgs(self::getInvokeArgs($injectedConstructor->getParameters(), $data));
+                throw new InvalidParameterValueException($parameterName, sprintf('Invalid value for parameter %s.', $parameterName));
             }
         }
+    }
+
+    /**
+     * @param ReflectionParameter $parameter
+     * @param string              $className
+     * @param array               $data
+     *
+     * @return mixed|object
+     *
+     * @throws InvalidParameterValueException
+     * @throws ReflectionException
+     * @throws UnknownParameterTypeException
+     */
+    private function getValueForClassParameter(ReflectionParameter $parameter, string $className, array $data)
+    {
+        $invoker = new ConstructorInvoker($className);
+        $instance = $invoker->invoke($data, $this->_isDataKeyValuePairs);
+
+        if ($instance === NULL) {
+            if ($parameter->isOptional() && $parameter->isDefaultValueAvailable())
+                return $parameter->getDefaultValue();
+
+            throw new UnknownParameterTypeException($parameter->getName(), sprintf('Unknown type for parameter %s', $parameter->getName()));
+        }
+
+        return $instance;
+    }
+
+    /**
+     * @param ReflectionParameter $parameter
+     * @param callable            $callable
+     * @param array               $data
+     *
+     * @return mixed
+     *
+     * @throws InvalidParameterValueException
+     * @throws ReflectionException
+     * @throws UnknownParameterTypeException
+     */
+    private function getValueForCallableParameter(ReflectionParameter $parameter, callable $callable, array $data)
+    {
+        $invoker = new CallableInvoker($callable);
+        return $invoker->invoke($data, $this->_isDataKeyValuePairs);
     }
 }

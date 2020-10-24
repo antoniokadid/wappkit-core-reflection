@@ -12,9 +12,6 @@ use Closure;
 class CallableInvoker
     extends ClosureInvoker
 {
-    /** @var callable */
-    private $_callable;
-
     /**
      * CallableInvoker constructor.
      *
